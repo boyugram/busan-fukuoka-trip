@@ -1315,6 +1315,26 @@ details.rain li span{color:var(--ink-2)}
 .hm-cmp-h:hover b{color:var(--hm-fuk)}
 .hm-cmp-h:focus-visible{outline:2px solid var(--hm-fuk);outline-offset:3px}
 
+/* the hotel's card on the map, in the same pixel frame as the buttons */
+.hm-pop{--k:#2A3046;position:absolute;z-index:3;width:240px;display:grid;grid-template-columns:72px minmax(0,1fr);gap:3px 10px;align-items:start;padding:10px 12px 10px 10px;background:#fff;cursor:pointer;
+  box-shadow:0 -2px 0 var(--k),0 2px 0 var(--k),-2px 0 0 var(--k),2px 0 0 var(--k),4px 6px 0 rgba(42,48,70,.28)}
+.hm-pop[hidden]{display:none}
+.hm-pop .hm-fac{grid-area:auto;grid-column:1;grid-row:1 / span 3;width:72px;margin:0;border-radius:0}
+.hm-pop-t,.hm-pop-p,.hm-pop-w{grid-column:2;min-width:0}
+.hm-pop-t b{display:block;font-size:.84rem;line-height:1.3;padding-right:14px;color:var(--ink)}
+.hm-pop-t .hm-stars{font-size:.72rem}
+.hm-pop-p{font:800 1.02rem var(--hm-num);color:var(--ink)}
+.hm-pop-p small{font:500 .7rem var(--body);color:var(--ink-2);margin-right:3px}
+.hm-pop-s{font:700 .8rem var(--body);color:var(--hm-ink3)}
+.hm-pop-w{font-size:.72rem;color:var(--ink-2)}
+.hm-pop-w b{font-family:var(--hm-num);font-weight:800;color:var(--ink)}
+.hm-pop-w span{white-space:nowrap}
+.hm-pop-x{position:absolute;top:1px;right:3px;border:0;background:none;font:700 1.05rem/1 var(--body);color:var(--hm-ink3);cursor:pointer;padding:3px 5px}
+.hm-pop-x:hover{color:var(--ink)}
+.hm-pop-tip{position:absolute;left:calc(var(--tip) - 7px);bottom:-9px;width:0;height:0;border:7px solid transparent;border-top-color:var(--k);border-bottom:0}
+.hm-pop.hm-pop-below .hm-pop-tip{bottom:auto;top:-9px;border-top:0;border-bottom:7px solid var(--k)}
+.hm-pop:hover .hm-pop-t b{color:var(--hm-fuk)}
+
 </style>
 </head>
 <body>
@@ -2378,6 +2398,42 @@ details.rain li span{color:var(--ink-2)}
   });
   var byId = {}; H.forEach(function (h) { byId[h.id] = h; });
 
+  var mapin = box.querySelector('.hm-mapin');
+  var pop = document.createElement('div');
+  pop.className = 'hm-pop'; pop.hidden = true; pop.setAttribute('role', 'dialog');
+  mapin.appendChild(pop);
+  function showPop(id) {
+    var h = byId[id];
+    if (!h) { pop.hidden = true; return; }
+    var p = h.status ? '<span class="hm-pop-s">' + h.status + '</span>' : h.masked ? '<small>每晚</small>NT$ ***' : '<small>每晚</small>NT$' + fmt(h.night);
+    pop.setAttribute('aria-label', h.name);
+    pop.innerHTML = '<button class="hm-pop-x" type="button" aria-label="關閉">×</button>' +
+      '<span class="hm-fac fx-' + h.fac + '" role="img" aria-label="' + h.name + ' 外觀"></span>' +
+      '<div class="hm-pop-t"><b>' + h.n + '. ' + h.name + '</b>' + stars(h.stars) + '</div>' +
+      '<div class="hm-pop-p">' + p + '</div>' +
+      '<div class="hm-pop-w"><span>西鐵站 <b>' + h.nishi + '</b>分</span>・<span>運河城 <b>' + h.canal + '</b>分</span></div><i class="hm-pop-tip"></i>';
+    pop.hidden = false;
+    place(id);
+  }
+  function place(id) {                                              // above the pin, or below it near the top edge; kept inside the map
+    var p = pins[id];
+    if (!p || pop.hidden) return;
+    var r = p.getBoundingClientRect(), m = mapin.getBoundingClientRect();
+    var cx = r.left + r.width / 2 - m.left, cy = r.top + r.height / 2 - m.top, w = pop.offsetWidth, ht = pop.offsetHeight, gap = r.height / 2 + 12;
+    var left = Math.min(Math.max(cx - w / 2, 6), m.width - w - 6);
+    var above = cy - gap - ht >= 4;
+    pop.style.left = left + 'px';
+    pop.style.top = (above ? cy - gap - ht : Math.min(cy + gap, m.height - ht - 4)) + 'px';
+    pop.style.setProperty('--tip', Math.min(Math.max(cx - left, 14), w - 14) + 'px');
+    pop.classList.toggle('hm-pop-below', !above);
+  }
+  pop.addEventListener('click', function (e) {
+    if (!state.on) return;
+    if (e.target.closest('.hm-pop-x')) { select(state.on, 'card'); return; }   // choosing the chosen one again lets it go
+    cards[state.on].scrollIntoView({ behavior: 'smooth', block: narrow() ? 'center' : 'nearest' });
+  });
+  window.addEventListener('resize', function () { if (state.on) place(state.on); });
+
   function select(id, from) {
     state.on = state.on === id && from === 'card' ? null : id;
     Object.keys(cards).forEach(function (k) {
@@ -2385,13 +2441,16 @@ details.rain li span{color:var(--ink-2)}
       cards[k].classList.toggle('hm-on', on); cards[k].setAttribute('aria-expanded', on);
       if (pins[k]) pins[k].classList.toggle('hm-on', on);
     });
-    if (!state.on) return;
+    if (!state.on) { pop.hidden = true; return; }
     var fold = cards[id].closest('details');
     if (fold && !fold.open) { fold.open = true; state.aside = true; }
     var p = pins[id];
     p.parentNode.appendChild(p);                                   // draw the chosen pin above its neighbours
-    if (from === 'pin') {
+    showPop(id);
+    if (from === 'cmp') {
       cards[id].scrollIntoView({ behavior: 'smooth', block: narrow() ? 'center' : 'nearest' });
+    } else if (from === 'pin') {
+      if (!narrow()) cards[id].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else if (from === 'card' && narrow()) {
       var r = p.getBoundingClientRect(), br = box.getBoundingClientRect();
       box.scrollBy({ left: r.left + r.width / 2 - br.left - br.width / 2, behavior: 'smooth' });
@@ -2404,7 +2463,7 @@ details.rain li span{color:var(--ink-2)}
     pins[id].addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); select(id, 'pin'); } });
   });
   Array.prototype.forEach.call(document.querySelectorAll('.hm-cmp-h'), function (b) {
-    b.addEventListener('click', function () { var id = b.getAttribute('data-id'); state.on = null; select(id, 'pin'); });
+    b.addEventListener('click', function () { var id = b.getAttribute('data-id'); state.on = null; select(id, 'cmp'); });
   });
 
   function render() {
@@ -2423,6 +2482,7 @@ details.rain li span{color:var(--ink-2)}
       list.appendChild(d);
     }
     if (!keep.length) list.innerHTML = '<p class="hm-empty">沒有符合的飯店。</p>';
+    if (state.on && !ids[state.on]) pop.hidden = true; else if (state.on) place(state.on);
     Object.keys(pins).forEach(function (id) {
       pins[id].classList.toggle('hm-off', !ids[id]);
       pins[id].classList.toggle('hm-dim', !!(byId[id] && byId[id].aside));
