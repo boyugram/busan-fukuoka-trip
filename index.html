@@ -1374,7 +1374,7 @@ details.rain li span{color:var(--ink-2)}
 .hm-add>summary{list-style:none;padding:3px 10px 4px}
 .hm-add>summary::-webkit-details-marker{display:none}
 .hm-add[open]>summary{background:var(--hm-fuk);color:#fff;transform:translateY(2px);box-shadow:inset 0 2px 0 #7E2F42,0 -2px 0 var(--k),0 2px 0 var(--k),-2px 0 0 var(--k),2px 0 0 var(--k)}
-.hm-add-menu{--k:#2A3046;position:absolute;right:0;top:calc(100% + 10px);z-index:6;width:min(300px,calc(100vw - 40px));max-height:340px;overflow-y:auto;background:#fff;padding:6px;
+.hm-add-menu{--k:#2A3046;position:absolute;right:0;top:calc(100% + 10px);z-index:6;width:min(300px,calc(100vw - 40px));max-height:min(520px,64vh);overflow-y:auto;background:#fff;padding:6px;
   box-shadow:0 -2px 0 var(--k),0 2px 0 var(--k),-2px 0 0 var(--k),2px 0 0 var(--k),4px 6px 0 rgba(42,48,70,.28)}
 .hm-add-menu button{font:inherit;width:100%;display:grid;grid-template-columns:56px minmax(0,1fr);gap:10px;align-items:center;text-align:left;background:none;border:0;border-radius:0;padding:6px;cursor:pointer;color:var(--ink)}
 .hm-add-menu button+button{border-top:1.5px dashed var(--hm-rule)}
@@ -1389,6 +1389,7 @@ details.rain li span{color:var(--ink-2)}
 .hm-acts .hm-chip{font-size:.8rem;padding:3px 10px 4px}
 .hm-acts [hidden]{display:none}
 .hm-now[hidden]{display:none}
+.hm-add-menu .hm-stars{display:block;font-size:.7rem;line-height:1.3}
 
 </style>
 </head>
@@ -2578,12 +2579,12 @@ details.rain li span{color:var(--ink-2)}
       }).join('') + '</tr>';
     }).join('');
     cmpBox.innerHTML = '<table style="min-width:' + (130 + cols.length * 150) + 'px"><thead><tr><th></th>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
-    var rest = H.filter(function (h) { return priced(h.id) && h.id !== state.pick && state.cmp.indexOf(h.id) < 0; });
+    var rest = H.filter(function (h) { return priced(h.id) && h.id !== state.pick && state.cmp.indexOf(h.id) < 0; }).sort(SORTS.rec);
     var add = document.getElementById('hm-add');
     add.hidden = !rest.length;
     document.getElementById('hm-add-menu').innerHTML = rest.map(function (h) {
       return '<button type="button" data-add="' + h.id + '"><span class="hm-fac fx-' + h.fac + '" role="img" aria-label="' + h.name + ' 外觀"></span>' +
-        '<span><b>' + h.n + '. ' + h.short + '</b><small>每晚 NT$<b>' + fmt(h.night) + '</b></small></span></button>';
+        '<span><b>' + h.n + '. ' + h.short + '</b>' + stars(h.stars) + '<small>每晚 NT$<b>' + fmt(h.night) + '</b></small></span></button>';
     }).join('');
   }
   function marks() {                                                // the pick's badge and each opened card's two buttons
