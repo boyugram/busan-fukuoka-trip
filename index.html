@@ -2399,11 +2399,13 @@ html.intro-on{overflow:hidden}
   })();
 })();
 
-/* The 推薦店面 map. Drag to pan; pinch, trackpad pinch, double-tap or the buttons to zoom (the mouse wheel zooms once the
-   map has been clicked, so it does not trap page scrolling). Picking a place, on the map or in the list under it, frames
-   it with its neighbours and opens its card. The map image, street insets and routes zoom as one layer; markers sit on a
-   layer of their own, placed from the same pan and zoom, so their text stays sharp; their labels are laid out after
-   every zoom so none overlap, the most important first. */
+/* The 推薦店面 map, also borrowed full size by the city pages. Drag to pan, and a flick keeps it sliding; pinch, double-tap,
+   double-tap and slide one finger, tap with two fingers, or use the buttons to zoom. On the full-size map the wheel and
+   trackpad zoom straight away, easing toward the pointer; the smaller map waits for a click first, so it does not trap
+   page scrolling. Picking a place, on the map or in the list under it, frames it with its neighbours and opens its card.
+   The map image, street insets and routes zoom as one layer; markers sit on a layer of their own, placed from the same
+   pan and zoom, so their text stays sharp; their labels are laid out after every zoom so none overlap, the most
+   important first. */
 (function () {
   var root = document.getElementById('xp');
   if (!root) return;
@@ -2412,7 +2414,8 @@ html.intro-on{overflow:hidden}
   var card = document.getElementById('xp-card');
   var KIND = { cafe: '咖啡', shop: '選物・逛街', food: '吃', sight: '景點', night: '夜景', stay: '住宿' };
   var MAXZ = 24, NEAR = 550;                   // deepest zoom; metres counted as "nearby"
-  var active = null, selPin = null;
+  var active = null, selPin = null, scrolled = 0;
+  window.addEventListener('scroll', function () { scrolled = Date.now(); }, { passive: true });
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function num(p, v) { return parseFloat(p.style.getPropertyValue(v)); }
@@ -2461,49 +2464,98 @@ html.intro-on{overflow:hidden}
     m.zoomAt = zoomAt; m.frame = frame; m.apply = apply; m.size = size;
     m.reset = function () { size(); m.s = m.min; m.x = (m.W - m.cw * m.s) / 2; m.y = (m.H - m.ch * m.s) / 2; apply(true); };
 
-    var ptr = {}, g = null, moved = false;
+    var ptr = {}, g = null, moved = false, kind = 'mouse', downAt = 0, tap = null, two = null, track = [], fling = 0, zt = null;
     function local(e) { var r = el.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; }
+    function clamp(s) { return Math.min(MAXZ, Math.max(m.min, s)); }
     function gesture() {
       var ids = Object.keys(ptr);
       if (!ids.length) { g = null; return; }
       var a = ptr[ids[0]], b = ptr[ids[1]] || a;
       g = { s: m.s, x: m.x, y: m.y, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, d: Math.hypot(a.x - b.x, a.y - b.y) || 1 };
     }
+    function halt() { cancelAnimationFrame(fling); fling = 0; if (zt) { cancelAnimationFrame(zt.raf); zt = null; } }
     el.addEventListener('pointerdown', function (e) {
       if (e.target.closest('.xp-ctl') || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      active = el; size();
-      ptr[e.pointerId] = local(e); moved = false; gesture();
+      active = el; size(); halt(); kind = e.pointerType;
+      var p = local(e), now = Date.now(), n = Object.keys(ptr).length + 1;
+      ptr[e.pointerId] = p; moved = false; track = []; gesture();
+      if (n === 1) {
+        downAt = now; two = null;
+        /* a second tap straight after a first: lifted, it zooms in; slid up or down, it zooms with one finger */
+        if (kind === 'touch' && tap && now - tap.t < 300 && Math.hypot(p.x - tap.x, p.y - tap.y) < 40) g.qz = p;
+      } else if (n === 2) two = { t: now, x: g.mx, y: g.my };
     });
     el.addEventListener('pointermove', function (e) {
       if (!ptr[e.pointerId] || !g) return;
       ptr[e.pointerId] = local(e);
       var ids = Object.keys(ptr), a = ptr[ids[0]], b = ptr[ids[1]] || a;
-      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      if (!moved && Math.hypot(mx - g.mx, my - g.my) < 5 && ids.length < 2) return;
+      var mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, d = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+      if (!moved && Math.hypot(mx - g.mx, my - g.my) < 6 && Math.abs(d - g.d) < 8) return;
       if (!moved) { moved = true; el.classList.add('drag'); try { el.setPointerCapture(e.pointerId); } catch (_) {} }
-      var s2 = ids.length > 1 ? Math.min(MAXZ, Math.max(m.min, g.s * Math.hypot(a.x - b.x, a.y - b.y) / g.d)) : g.s;
-      m.s = s2; m.x = mx - (g.mx - g.x) * s2 / g.s; m.y = my - (g.my - g.y) * s2 / g.s;
+      var q = g.qz, s2 = q ? clamp(g.s * Math.exp((my - q.y) * .012)) : ids.length > 1 ? clamp(g.s * d / g.d) : g.s;
+      if (q) { mx = q.x; my = q.y; }                       // one-finger zoom stays on the spot first tapped
+      m.s = s2; m.x = mx - ((q ? q.x : g.mx) - g.x) * s2 / g.s; m.y = my - ((q ? q.y : g.my) - g.y) * s2 / g.s;
       apply(false);
+      if (ids.length === 1 && !q) { track.push([e.timeStamp, m.x, m.y]); if (track.length > 8) track.shift(); }
     });
     function up(e) {
       if (!ptr[e.pointerId]) return;
-      delete ptr[e.pointerId]; gesture();
-      if (!g) el.classList.remove('drag');
+      var n = Object.keys(ptr).length, p = ptr[e.pointerId], now = Date.now(), q = g && g.qz;
+      delete ptr[e.pointerId];
+      if (n === 1) {
+        el.classList.remove('drag');
+        if (q && !moved) zoomAt(2, q.x, q.y, true);
+        else if (two && !moved && now - two.t < 350) zoomAt(.5, two.x, two.y, true);       // two fingers tapped together: out one step
+        if (moved && !q && !two && e.type === 'pointerup') glide();
+        tap = !q && !two && !moved && kind === 'touch' && now - downAt < 250 ? { t: now, x: p.x, y: p.y } : null;
+      }
+      gesture(); track = [];
     }
     el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+    /* a flicked map keeps sliding and slows to a stop */
+    function glide() {
+      var b = track[track.length - 1], t = track.filter(function (s) { return b && b[0] - s[0] < 100; });
+      if (t.length < 2 || performance.now() - b[0] > 80) return;          // the finger rested before lifting
+      var dt = b[0] - t[0][0], vx = (b[1] - t[0][1]) / dt, vy = (b[2] - t[0][2]) / dt, last = performance.now();
+      if (!(Math.hypot(vx, vy) > .3)) return;
+      fling = requestAnimationFrame(function step(now) {
+        var f = Math.min(32, now - last), x = m.x + vx * f, y = m.y + vy * f, k = Math.exp(-f / 325);
+        last = now; m.x = x; m.y = y; apply(false);
+        vx = Math.abs(m.x - x) > .5 ? 0 : vx * k; vy = Math.abs(m.y - y) > .5 ? 0 : vy * k;   // stopped by an edge
+        fling = Math.hypot(vx, vy) > .02 ? requestAnimationFrame(step) : 0;
+      });
+    }
     el.addEventListener('click', function (e) {          // a drag that ends over a marker is not a tap on it
       if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; return; }
       var pin = e.target.closest('.xp-pin');
       if (pin) select(m, pin);
       else if (!e.target.closest('.xp-ctl')) close();
     }, true);
+    /* wheel zoom eases toward its target, so a mouse wheel's notches glide instead of jumping */
+    function ease() {
+      var r = zt.s / m.s, f = Math.abs(Math.log(r)) < .003 ? r : Math.pow(r, .3);
+      zoomAt(f, zt.x, zt.y, false);
+      if (f === r) zt = null; else zt.raf = requestAnimationFrame(ease);
+    }
     el.addEventListener('wheel', function (e) {
-      if (!(e.ctrlKey || active === el)) return;
+      var full = !!el.closest('.full');
+      if (!e.ctrlKey && (full ? window.pageYOffset > 2 || Date.now() - scrolled < 400 : active !== el)) return;
       e.preventDefault();
-      var p = local(e);
-      zoomAt(Math.exp(-e.deltaY * (e.ctrlKey ? .012 : .0022)), p.x, p.y, false);
+      var p = local(e), dy = e.deltaY * (e.deltaMode === 1 ? 33 : e.deltaMode === 2 ? 400 : 1);
+      if (e.ctrlKey) { halt(); zoomAt(Math.exp(-dy * .012), p.x, p.y, false); return; }   // a trackpad pinch follows the fingers directly
+      cancelAnimationFrame(fling); fling = 0;
+      if (!zt) zt = { s: m.s, raf: requestAnimationFrame(ease) };
+      zt.s = clamp(zt.s * Math.exp(-dy * .004)); zt.x = p.x; zt.y = p.y;
     }, { passive: false });
-    el.addEventListener('dblclick', function (e) { if (e.target.closest('.xp-ctl')) return; var p = local(e); zoomAt(2.2, p.x, p.y, true); });
+    /* Safari on a Mac pinches with gesture events instead of ctrl + wheel; on a touch screen the pointers above already pinch */
+    var gs = 1;
+    el.addEventListener('gesturestart', function (e) { e.preventDefault(); gs = 1; });
+    el.addEventListener('gesturechange', function (e) {
+      e.preventDefault();
+      if (Object.keys(ptr).length) return;
+      var p = local(e); halt(); zoomAt(e.scale / gs, p.x, p.y, false); gs = e.scale;
+    });
+    el.addEventListener('dblclick', function (e) { if (kind === 'touch' || e.target.closest('.xp-ctl')) return; var p = local(e); zoomAt(2, p.x, p.y, true); });
     el.querySelector('.xp-ctl').addEventListener('click', function (e) {
       var b = e.target.closest('button'); if (!b) return;
       size();
